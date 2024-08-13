@@ -68,7 +68,7 @@ const IScrollViewGesture: React.FC<PropsWithChildren<Props>> = (props) => {
   const maxPage = dataLength;
   const isHorizontal = useDerivedValue(() => !vertical, [vertical]);
   const max = useSharedValue(0);
-  const panOffset = useSharedValue<number | undefined>(undefined); // set to undefined when not actively in a pan gesture
+  const panOffset = useSharedValue<number | undefined>(undefined);
   const touching = useSharedValue(false);
   const validStart = useSharedValue(false);
   const scrollEndTranslation = useSharedValue(0);
@@ -119,10 +119,14 @@ const IScrollViewGesture: React.FC<PropsWithChildren<Props>> = (props) => {
   );
 
   const endWithSpring = React.useCallback(
-    (onFinished?: () => void) => {
+    (
+      scrollEndTranslationValue: number,
+      scrollEndVelocityValue: number,
+      onFinished?: () => void,
+    ) => {
       "worklet";
       const origin = translation.value;
-      const velocity = scrollEndVelocity.value;
+      const velocity = scrollEndVelocityValue;
       // Default to scroll in the direction of the slide (with deceleration)
       let finalTranslation: number = withDecay({
         velocity,
@@ -132,7 +136,7 @@ const IScrollViewGesture: React.FC<PropsWithChildren<Props>> = (props) => {
       // If the distance of the swipe exceeds the max scroll distance, keep the view at the current position
       if (
         maxScrollDistancePerSwipeIsSet &&
-        Math.abs(scrollEndTranslation.value) > maxScrollDistancePerSwipe
+        Math.abs(scrollEndTranslationValue) > maxScrollDistancePerSwipe
       ) {
         finalTranslation = origin;
       }
@@ -146,9 +150,9 @@ const IScrollViewGesture: React.FC<PropsWithChildren<Props>> = (props) => {
          * */
         if (pagingEnabled) {
           // distance with direction
-          const offset = -(scrollEndTranslation.value >= 0 ? 1 : -1); // 1 or -1
+          const offset = -(scrollEndTranslationValue >= 0 ? 1 : -1); // 1 or -1
           const computed = offset < 0 ? Math.ceil : Math.floor;
-          const page = computed(-translation.value / size);
+          const page = computed(-origin / size);
 
           if (loop) {
             const finalPage = page + offset;
@@ -196,9 +200,7 @@ const IScrollViewGesture: React.FC<PropsWithChildren<Props>> = (props) => {
       snapEnabled,
       translation,
       pagingEnabled,
-      scrollEndVelocity.value,
       maxScrollDistancePerSwipe,
-      scrollEndTranslation.value,
       maxScrollDistancePerSwipeIsSet,
     ],
   );
@@ -375,7 +377,8 @@ const IScrollViewGesture: React.FC<PropsWithChildren<Props>> = (props) => {
       }
 
       const { velocityX, velocityY, translationX, translationY } = e;
-      scrollEndVelocity.value = isHorizontal.value ? velocityX : velocityY;
+      const scrollEndVelocityValue = isHorizontal.value ? velocityX : velocityY;
+      scrollEndVelocity.value = scrollEndVelocityValue; // may update async: see https://docs.swmansion.com/react-native-reanimated/docs/core/useSharedValue#remarks
 
       let panTranslation = isHorizontal.value ? translationX : translationY;
 
@@ -384,10 +387,9 @@ const IScrollViewGesture: React.FC<PropsWithChildren<Props>> = (props) => {
       else if (fixedDirection === "positive")
         panTranslation = +Math.abs(panTranslation);
 
-      scrollEndTranslation.value = panTranslation;
+      scrollEndTranslation.value = panTranslation; // may update async: see https://docs.swmansion.com/react-native-reanimated/docs/core/useSharedValue#remarks
 
-      const totalTranslation =
-        scrollEndVelocity.value + scrollEndTranslation.value;
+      const totalTranslation = scrollEndVelocityValue + panTranslation;
 
       /**
        * If the maximum scroll distance is set and the translation `exceeds the maximum scroll distance`,
@@ -428,7 +430,7 @@ const IScrollViewGesture: React.FC<PropsWithChildren<Props>> = (props) => {
         );
       }
       else {
-        endWithSpring(onScrollEnd);
+        endWithSpring(panTranslation, scrollEndVelocityValue, onScrollEnd);
       }
 
       if (!loop) touching.value = false;
